@@ -21,7 +21,7 @@ unsigned long lastMeasurementTime = 0;
 int prev_button_state = HIGH; // the previous state from the input pin
 int button_state;    // the current reading from the input pin
 unsigned long lastDebounceTime = 0;  // the last time the button input was sampled
-int displayState = 0; // 0 == off, 1 == text, 2 == graph
+int displayState = 0; // 0 == off, 1 == text, 2 == graph humidity, 3 == graph temperature
 unsigned long displayTimeoutStartTime = 0; // To store the start time of display, it should turn off after displayDuration*1000 seconds
 
 void setup() {
@@ -70,7 +70,6 @@ void loop() {
 
   // Check if it's time to take a measurement
   if (currentTime - lastMeasurementTime >= MEASUREMENT_INTERVAL) {
-
     try {
       takeMeasurement(measurements[measurementIndex]);
     } catch (const char *error) {
@@ -86,11 +85,14 @@ void loop() {
       drawText(error);
     }
 
-    // Update timestamp of the measurement
-    measurements[measurementIndex].timestamp = currentTime;
-
-    // Update measurement index
-    measurementIndex = (measurementIndex + 1) % maxMeasurements;
+    // if the index is at the end of the array, drop the first element and move all the other elements up
+    if (measurementIndex == maxMeasurements - 1) {
+      for (int i = 0; i < maxMeasurements - 1; i++) {
+        measurements[i] = measurements[i + 1];
+      }
+    } else {
+      measurementIndex++;
+    }
   }
 
   int reading = digitalRead(BUTTON_PIN);  // read the state of the button
@@ -106,13 +108,24 @@ void loop() {
       if (button_state == HIGH) {  // button has been pressed
         if (displayState == 0) { // If display is not active, display to first screen
           displayState = 1;
-          displaySensorValues(measurements[measurementIndex]);
+          // display last measurement
+          measurementType mostRecentMeasurement;
+          if (measurementIndex == 0) {
+              mostRecentMeasurement = measurements[maxMeasurements - 1];
+          } else {
+              mostRecentMeasurement = measurements[measurementIndex - 1];
+          }
+          displaySensorValues(mostRecentMeasurement);
           displayTimeoutStartTime = millis(); // Start the display timeout
         } else if (displayState == 1) { // if the data display is on, go to the graph display and reset the timeout
           displayState = 2;
-          plotGraphHumidityGraph(measurements, maxMeasurements, MEASUREMENT_INTERVAL);
+          plotHumidityGraph(measurements, maxMeasurements, MEASUREMENT_INTERVAL);
           displayTimeoutStartTime = millis(); // restart the display timeout
-        } else { //if (displayState == 2) { // clear the display
+        } else if (displayState == 2) {
+          displayState = 3;
+          plotTemperatureGraph(measurements, maxMeasurements, MEASUREMENT_INTERVAL);
+          displayTimeoutStartTime = millis(); // restart the display timeout
+        } else { // clear the display
           displayState = 0;
           displayTimeoutStartTime = 0;
           display.clearDisplay();

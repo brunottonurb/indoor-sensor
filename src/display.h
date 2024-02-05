@@ -9,6 +9,7 @@ extern Adafruit_SSD1306 display;
 void setup_display();
 void drawText(const char *text);
 void displaySensorValues(measurementType measurement);
-void plotGraphHumidityGraph(measurementType measurements[], int maxMeasurements, int measurementInterval);
+void plotHumidityGraph(measurementType measurements[], int maxMeasurements, int measurementInterval);
+void plotTemperatureGraph(measurementType measurements[], int maxMeasurements, int measurementInterval);
 
 #endif
