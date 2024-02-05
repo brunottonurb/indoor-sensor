@@ -1,4 +1,5 @@
 #include <ESP8266HTTPClient.h>
+#include "secrets.h"
 #include "config.h"
 
 void sendToInfluxDB(float temperature, float humidity, float pressure, float gasResistance) {

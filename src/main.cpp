@@ -6,13 +6,13 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "config.h"
+#include "secrets.h"
 #include "display.h"
 #include "measurementType.h"
 #include "db.h"
 #include "sensor.h"
 
-const int n = 4; // Number of hours to store for the graph view
-const int maxMeasurements = (n * 3600 * 1000) / MEASUREMENT_INTERVAL; // Calculate maximum number of measurements based on n and measurementInterval
+const int maxMeasurements = GRAPH_DURATION / MEASUREMENT_INTERVAL; // Calculate maximum number of measurements based on graph duration and measurement interval
 measurementType measurements[maxMeasurements];
 int measurementIndex = 0;
 
