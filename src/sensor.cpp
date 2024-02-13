@@ -1,5 +1,5 @@
 #include <Adafruit_BME680.h>
-#include "measurementType.h"
+#include "measurement_type.h"
 
 Adafruit_BME680 bme; // Define the sensor object
 
@@ -17,7 +17,8 @@ void setup_sensor() {
   bme.setGasHeater(320, 150); // 320*C for 150 ms
 }
 
-void takeMeasurement(measurementType &measurement) {
+measurementType takeMeasurement() {
+  measurementType measurement;
   // this is a blocking way to do this, there may be a way to do it async
   if (! bme.performReading()) {
     throw "Failed to perform reading :(";
@@ -27,6 +28,7 @@ void takeMeasurement(measurementType &measurement) {
   measurement.pressure = bme.pressure / 100.0;
   measurement.gas_resistance = bme.gas_resistance / 1000.0;
   measurement.timestamp = millis();
+  return measurement;
 }
 
 // unsigned long beginMeasurement() {
