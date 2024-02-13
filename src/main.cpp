@@ -8,16 +8,16 @@
 #include "config.h"
 #include "secrets.h"
 #include "display.h"
-#include "measurementType.h"
+#include "measurement_type.h"
 #include "db.h"
 #include "sensor.h"
+#include "circular-buffer.h"
 
 const int maxMeasurements = GRAPH_DURATION / MEASUREMENT_INTERVAL; // Calculate maximum number of measurements based on graph duration and measurement interval
-measurementType measurements[maxMeasurements];
-int measurementIndex = 0;
+CircularBuffer<measurementType> measurements(maxMeasurements); // Create a circular buffer to store measurements
 
 const unsigned long debounceDelay = 50;     // the debounce time; increase if the output flickers
-unsigned long lastMeasurementTime = 0;
+
 int prev_button_state = HIGH; // the previous state from the input pin
 int button_state;    // the current reading from the input pin
 unsigned long lastDebounceTime = 0;  // the last time the button input was sampled
@@ -61,37 +61,57 @@ void setup() {
   // Clear the buffer and the display
   display.clearDisplay();
   display.display();
+}
 
-  lastMeasurementTime = millis();
+void printMeasurementBufferToSerial() {
+  Serial.print("MeasurementsSize: ");
+  Serial.println(measurements.getSize());
+  // print header
+  Serial.println("Index\tTemperature\tHumidity\tPressure\tGas Resistance\tTimestamp");
+  for (int i = 0; i < (int)measurements.getSize(); i++) {
+    Serial.print(i);
+    Serial.print("\t");
+    Serial.print(measurements.get(i).temperature);
+    Serial.print("\t\t");
+    Serial.print(measurements.get(i).humidity);
+    Serial.print("\t\t");
+    Serial.print(measurements.get(i).pressure);
+    Serial.print("\t\t");
+    Serial.print(measurements.get(i).gas_resistance);
+    Serial.print("\t\t");
+    Serial.println(measurements.get(i).timestamp);
+  }
 }
 
 void loop() {
   unsigned long currentTime = millis();
 
+  bool shouldTakeMeasurement = false;
+
   // Check if it's time to take a measurement
-  if (currentTime - lastMeasurementTime >= MEASUREMENT_INTERVAL) {
+  if (measurements.getSize() == 0) {
+    Serial.println("No measurements yet, taking one now");
+    shouldTakeMeasurement = true;
+  } else if (currentTime - measurements.get(-1).timestamp >= MEASUREMENT_INTERVAL) {
+    Serial.println("Time to take a measurement");
+    shouldTakeMeasurement = true;
+  }
+
+  if (shouldTakeMeasurement) {
+    // If there are no measurements, take one
+    measurementType measurement;
     try {
-      takeMeasurement(measurements[measurementIndex]);
+      measurement = takeMeasurement();
+      measurements.put(measurement);
     } catch (const char *error) {
       Serial.println(error);
       drawText(error);
     }
-
-    lastMeasurementTime = currentTime;
     try {
-      sendToInfluxDB(measurements[measurementIndex].temperature, measurements[measurementIndex].humidity, measurements[measurementIndex].pressure, measurements[measurementIndex].gas_resistance);
+      sendToInfluxDB(measurement.temperature, measurement.humidity, measurement.pressure, measurement.gas_resistance);
     } catch (const char *error) {
       Serial.println(error);
       drawText(error);
-    }
-
-    // if the index is at the end of the array, drop the first element and move all the other elements up
-    if (measurementIndex == maxMeasurements - 1) {
-      for (int i = 0; i < maxMeasurements - 1; i++) {
-        measurements[i] = measurements[i + 1];
-      }
-    } else {
-      measurementIndex++;
     }
   }
 
@@ -108,28 +128,42 @@ void loop() {
       if (button_state == HIGH) {  // button has been pressed
         if (displayState == 0) { // If display is not active, display to first screen
           displayState = 1;
+
+          // printMeasurementBufferToSerial();
+
           // display last measurement
-          measurementType mostRecentMeasurement;
-          if (measurementIndex == 0) {
-              mostRecentMeasurement = measurements[maxMeasurements - 1];
+          if (measurements.getSize() > 0) {
+            measurementType mostRecentMeasurement = measurements.getLast();
+            displaySensorValues(mostRecentMeasurement);
           } else {
-              mostRecentMeasurement = measurements[measurementIndex - 1];
+            Serial.println("No measurements to display");
           }
-          displaySensorValues(mostRecentMeasurement);
           displayTimeoutStartTime = millis(); // Start the display timeout
+          Serial.println("Displaying sensor values");
         } else if (displayState == 1) { // if the data display is on, go to the graph display and reset the timeout
           displayState = 2;
-          plotHumidityGraph(measurements, maxMeasurements, MEASUREMENT_INTERVAL);
+          if (measurements.getSize() == 0) {
+            Serial.println("No measurements to display");
+            drawText("No measurements to display");
+          }
+          plotHumidityGraph(measurements.toArray(), measurements.getSize(), GRAPH_DURATION);
           displayTimeoutStartTime = millis(); // restart the display timeout
-        } else if (displayState == 2) {
+          Serial.println("Displaying humidity graph");
+        } else if (displayState == 2) { // if the graph display is on, switch to temperature graph display and reset the timeout
           displayState = 3;
-          plotTemperatureGraph(measurements, maxMeasurements, MEASUREMENT_INTERVAL);
+          if (measurements.getSize() == 0) {
+            Serial.println("No measurements to display");
+            drawText("No measurements to display");
+          }
+          plotTemperatureGraph(measurements.toArray(), measurements.getSize(), GRAPH_DURATION);
           displayTimeoutStartTime = millis(); // restart the display timeout
-        } else { // clear the display
+          Serial.println("Displaying temperature graph");
+        } else if (displayState == 3) { // if the graph display is on, turn off the display and remove the timeout
           displayState = 0;
           displayTimeoutStartTime = 0;
           display.clearDisplay();
           display.display();
+          Serial.println("Turning off display with button press");
         }
       }
     }
