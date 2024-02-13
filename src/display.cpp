@@ -132,7 +132,7 @@ void plotTemperatureGraph(
   display.setCursor(0, 0);
   display.cp437(true);
 
-  display.println(F("Temperature ("));
+  display.print(F("Temperature ("));
   display.print(ds);
   display.println(F("C)"));
 
