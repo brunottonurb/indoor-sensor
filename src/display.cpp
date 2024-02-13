@@ -1,7 +1,11 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include "config.h"
-#include "measurementType.h"
+#include "measurement_type.h"
+#include <cstddef> // for std::size_t
+
+// hack to get a degree symbol
+const char ds[2] = {static_cast<char>(248), '\0'};
 
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
@@ -36,7 +40,9 @@ void displaySensorValues(measurementType measurement) {
 
   display.print(F("Temperature: "));
   display.print(measurement.temperature);
-  display.println(F(" *C"));
+  display.print(F(" "));
+  display.print(ds);
+  display.println(F("C"));
 
   display.print(F("Pressure: "));
   display.print(measurement.pressure);
@@ -53,143 +59,127 @@ void displaySensorValues(measurementType measurement) {
   display.display();
 }
 
-void plotHumidityGraph(measurementType measurements[], int maxMeasurements, int measurementInterval) {
-  // Clear display buffer
+void plotHumidityGraph(
+  measurementType measurements[],
+  std::size_t measurementsSize,
+  unsigned long graphLength
+) {
   display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.cp437(true);
 
-  // Define graph dimensions
+  display.println(F("Humidity (%)"));
+
   const int graphWidth = SCREEN_WIDTH;
   const int graphHeight = SCREEN_HEIGHT - 10; // Leave a gap at the top for the title
   const int yOffset = 10; // Start drawing below the gap
 
-  Serial.println("draw vertical lines");
+  // the graph goes for 4 hours (or graphLength)
+  // left is 4 hours before the newest measurement
+  const unsigned long endTime = measurements[measurementsSize -  1].timestamp;
+  const unsigned long startTime = measurements[measurementsSize -  1].timestamp - graphLength;
 
-  // Find maximum and minimum humidity values
-  float maxHumidity = 0;
-  float minHumidity = 100; // Initialize with a value higher than any possible humidity
-  int count = 0; // Counter for the number of valid measurements
-  for (int i = 0; i < maxMeasurements; i++) {
-    if (measurements[i].humidity > 0) {
-      count++;
-      if (measurements[i].humidity > maxHumidity) {
-        maxHumidity = measurements[i].humidity;
+  // keep track of max and min values
+  // so we can add a label to these points
+  measurementType minHumidity = measurements[0];
+  measurementType maxHumidity = measurements[0];
+
+  // draw the dots for the measurements
+  int x;
+  int y;
+  for (int i = 0; i < (int)measurementsSize; i++) {
+    x = map(measurements[i].timestamp, startTime, endTime, 0, graphWidth);
+    y = map(measurements[i].humidity, 0, 100, yOffset + graphHeight, yOffset);
+    Serial.print("x: ");
+    Serial.print(x);
+    Serial.print(" y: ");
+    Serial.println(y);
+    display.drawPixel(x, y, WHITE);
+
+    if (i > 0) {
+      if (measurements[i].humidity < minHumidity.humidity) {
+        minHumidity = measurements[i];
       }
-      if (measurements[i].humidity < minHumidity) {
-        minHumidity = measurements[i].humidity;
+      if (measurements[i].humidity > maxHumidity.humidity) {
+        maxHumidity = measurements[i];
       }
     }
   }
 
-  Serial.println("plot data points");
-
-  // Plot humidity data points
-  for (int i = 0; i < maxMeasurements; i++) {
-    int x = map(i, 0, maxMeasurements - 1, 0, graphWidth);
-    if (measurements[i].humidity == 0) {
-      continue;
-    }
-    int y = map(measurements[i].humidity, 0, 100, graphHeight, yOffset);
-    display.drawPixel(x, y, SSD1306_WHITE);
-
-    // Label maximum value
-    if (measurements[i].humidity == maxHumidity) {
-      display.setTextSize(1);
-      display.setTextColor(WHITE);
-      display.cp437(true);
-      display.setCursor(x + 5, y - 5); // Adjust position for label
-      display.print((int)maxHumidity); // Print the maximum humidity value
-      display.println("%");
-    }
-
-    // Label minimum value only if there are more than one measurement and max != min
-    if (count > 1 && (int)minHumidity != (int)maxHumidity && measurements[i].humidity == minHumidity) {
-      display.setTextSize(1);
-      display.setTextColor(WHITE);
-      display.cp437(true);
-      display.setCursor(x + 5, y + 5); // Adjust position for label
-      display.print((int)minHumidity); // Print the minimum humidity value
-      display.println("%");
-    }
+  // add labels for max and min values
+  display.setCursor(map(maxHumidity.timestamp, startTime, endTime, 0, graphWidth), map(maxHumidity.humidity, 0, 100, yOffset + graphHeight, yOffset));
+  display.print(maxHumidity.humidity);
+  display.println("%");
+  if (minHumidity.humidity != maxHumidity.humidity) {
+    display.setCursor(map(minHumidity.timestamp, startTime, endTime, 0, graphWidth), map(minHumidity.humidity, 0, 100, yOffset + graphHeight, yOffset));
+    display.print(minHumidity.humidity);
+    display.println("%");
   }
 
-  // Display title
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.cp437(true);
-  display.setCursor(0, 0);
-  display.println("Humidity");
-
-  // Update display
   display.display();
 }
 
-void plotTemperatureGraph(measurementType measurements[], int maxMeasurements, int measurementInterval) {
-  // Clear display buffer
+void plotTemperatureGraph(
+  measurementType measurements[],
+  std::size_t measurementsSize,
+  unsigned long graphLength
+) {
   display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 0);
+  display.cp437(true);
 
-  // Define graph dimensions
+  display.println(F("Temperature ("));
+  display.print(ds);
+  display.println(F("C)"));
+
   const int graphWidth = SCREEN_WIDTH;
   const int graphHeight = SCREEN_HEIGHT - 10; // Leave a gap at the top for the title
   const int yOffset = 10; // Start drawing below the gap
 
-  Serial.println("draw vertical lines");
+  // the graph goes for 4 hours (or graphLength)
+  // left is 4 hours before the newest measurement
+  const unsigned long endTime = measurements[measurementsSize -  1].timestamp;
+  const unsigned long startTime = measurements[measurementsSize -  1].timestamp - graphLength;
 
-  // Find maximum and minimum temperature values
-  float maxTemperature = -100; // Initialize with a value lower than any possible temperature
-  float minTemperature = 100; // Initialize with a value higher than any possible temperature
-  int count = 0; // Counter for the number of valid measurements
-  for (int i = 0; i < maxMeasurements; i++) {
-    if (measurements[i].temperature != 0) {
-      count++;
-      if (measurements[i].temperature > maxTemperature) {
-        maxTemperature = measurements[i].temperature;
+  // keep track of max and min values
+  // so we can add a label to these points
+  measurementType minTemperature = measurements[0];
+  measurementType maxTemperature = measurements[0];
+
+  // draw the dots for the measurements
+  int x;
+  int y;
+  for (int i = 0; i < (int)measurementsSize; i++) {
+    // disregard temps below 0 and above 45, this is an indoor sensor
+    x = map(measurements[i].timestamp, startTime, endTime, 0, graphWidth);
+    y = map(measurements[i].temperature, 0, 45, yOffset + graphHeight, yOffset);
+    display.drawPixel(x, y, WHITE);
+
+    if (i > 0) {
+      if (measurements[i].temperature < minTemperature.temperature) {
+        minTemperature = measurements[i];
       }
-      if (measurements[i].temperature < minTemperature) {
-        minTemperature = measurements[i].temperature;
+      if (measurements[i].temperature > maxTemperature.temperature) {
+        maxTemperature = measurements[i];
       }
     }
   }
 
-  Serial.println("plot data points");
-
-  // Plot temperature data points
-  for (int i = 0; i < maxMeasurements; i++) {
-    int x = map(i, 0, maxMeasurements - 1, 0, graphWidth);
-    if (measurements[i].temperature == 0) {
-      continue;
-    }
-    int y = map(measurements[i].temperature, -20, 40, graphHeight, yOffset);
-    display.drawPixel(x, y, SSD1306_WHITE);
-
-    // Label maximum value
-    if (measurements[i].temperature == maxTemperature) {
-      display.setTextSize(1);
-      display.setTextColor(WHITE);
-      display.cp437(true);
-      display.setCursor(x + 5, y - 5); // Adjust position for label
-      display.print((int)maxTemperature); // Print the maximum temperature value
-      display.println("*C");
-    }
-
-    // Label minimum value only if there are more than one measurement and max != min
-    if (count > 1 && (int)minTemperature != (int)maxTemperature && measurements[i].temperature == minTemperature) {
-      display.setTextSize(1);
-      display.setTextColor(WHITE);
-      display.cp437(true);
-      display.setCursor(x + 5, y + 5); // Adjust position for label
-      display.print((int)minTemperature); // Print the minimum temperature value
-      display.println("*C");
-    }
-
+  // add labels for max and min values
+  display.setCursor(map(maxTemperature.timestamp, startTime, endTime, 0, graphWidth), map(maxTemperature.temperature, -20, 40, yOffset + graphHeight, yOffset));
+  display.print(maxTemperature.temperature);
+  display.print(ds);
+  display.println("C");
+  if (minTemperature.temperature != maxTemperature.temperature) {
+    display.setCursor(map(minTemperature.timestamp, startTime, endTime, 0, graphWidth), map(minTemperature.temperature, -20, 40, yOffset + graphHeight, yOffset));
+    display.print(minTemperature.temperature);
+    display.print(ds);
+    display.println("C");
   }
 
-  // Display title
-  display.setTextSize(1);
-  display.setTextColor(WHITE);
-  display.cp437(true);
-  display.setCursor(0, 0);
-  display.println("Temperature");
-
-  // Update display
   display.display();
 }
