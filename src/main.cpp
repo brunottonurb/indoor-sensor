@@ -84,98 +84,103 @@ void printMeasurementBufferToSerial() {
 }
 
 void loop() {
-  unsigned long currentTime = millis();
+  try {
+    unsigned long currentTime = millis();
 
-  bool shouldTakeMeasurement = false;
+    bool shouldTakeMeasurement = false;
 
-  // Check if it's time to take a measurement
-  if (measurements.getSize() == 0) {
-    Serial.println("No measurements yet, taking one now");
-    shouldTakeMeasurement = true;
-  } else if (currentTime - measurements.get(-1).timestamp >= MEASUREMENT_INTERVAL) {
-    Serial.println("Time to take a measurement");
-    shouldTakeMeasurement = true;
-  }
-
-  if (shouldTakeMeasurement) {
-    // If there are no measurements, take one
-    measurementType measurement;
-    try {
-      measurement = takeMeasurement();
-      measurements.put(measurement);
-    } catch (const char *error) {
-      Serial.println(error);
-      drawText(error);
+    // Check if it's time to take a measurement
+    if (measurements.getSize() == 0) {
+      Serial.println("No measurements yet, taking one now");
+      shouldTakeMeasurement = true;
+    } else if (currentTime - measurements.get(-1).timestamp >= MEASUREMENT_INTERVAL) {
+      Serial.println("Time to take a measurement");
+      shouldTakeMeasurement = true;
     }
-    try {
-      sendToInfluxDB(measurement.temperature, measurement.humidity, measurement.pressure, measurement.gas_resistance);
-    } catch (const char *error) {
-      Serial.println(error);
-      drawText(error);
+
+    if (shouldTakeMeasurement) {
+      // If there are no measurements, take one
+      measurementType measurement;
+      try {
+        measurement = takeMeasurement();
+        measurements.put(measurement);
+      } catch (const char *error) {
+        Serial.println(error);
+        drawText(error);
+      }
+      try {
+        sendToInfluxDB(measurement.temperature, measurement.humidity, measurement.pressure, measurement.gas_resistance);
+      } catch (const char *error) {
+        Serial.println(error);
+        drawText(error);
+      }
     }
-  }
 
-  int reading = digitalRead(BUTTON_PIN);  // read the state of the button
-  if (reading != prev_button_state) {      // if the input state has changed
-    lastDebounceTime = millis();           // reset the debouncing timer
-  }
+    int reading = digitalRead(BUTTON_PIN);  // read the state of the button
+    if (reading != prev_button_state) {      // if the input state has changed
+      lastDebounceTime = millis();           // reset the debouncing timer
+    }
 
-  if (millis() - lastDebounceTime > debounceDelay) { // if enough time has passed
-    // determine if the button state has changed
-    if (reading != button_state) {
-      button_state = reading;
+    if (millis() - lastDebounceTime > debounceDelay) { // if enough time has passed
+      // determine if the button state has changed
+      if (reading != button_state) {
+        button_state = reading;
 
-      if (button_state == HIGH) {  // button has been pressed
-        if (displayState == 0) { // If display is not active, display to first screen
-          displayState = 1;
+        if (button_state == HIGH) {  // button has been pressed
+          if (displayState == 0) { // If display is not active, display to first screen
+            displayState = 1;
 
-          // printMeasurementBufferToSerial();
+            // printMeasurementBufferToSerial();
 
-          // display last measurement
-          if (measurements.getSize() > 0) {
-            measurementType mostRecentMeasurement = measurements.getLast();
-            displaySensorValues(mostRecentMeasurement);
-          } else {
-            Serial.println("No measurements to display");
+            // display last measurement
+            if (measurements.getSize() > 0) {
+              measurementType mostRecentMeasurement = measurements.getLast();
+              displaySensorValues(mostRecentMeasurement);
+            } else {
+              Serial.println("No measurements to display");
+            }
+            displayTimeoutStartTime = millis(); // Start the display timeout
+            Serial.println("Displaying sensor values");
+          } else if (displayState == 1) { // if the data display is on, go to the graph display and reset the timeout
+            displayState = 2;
+            if (measurements.getSize() == 0) {
+              Serial.println("No measurements to display");
+              drawText("No measurements to display");
+            }
+            plotHumidityGraph(measurements.toArray(), measurements.getSize(), GRAPH_DURATION);
+            displayTimeoutStartTime = millis(); // restart the display timeout
+            Serial.println("Displaying humidity graph");
+          } else if (displayState == 2) { // if the graph display is on, switch to temperature graph display and reset the timeout
+            displayState = 3;
+            if (measurements.getSize() == 0) {
+              Serial.println("No measurements to display");
+              drawText("No measurements to display");
+            }
+            plotTemperatureGraph(measurements.toArray(), measurements.getSize(), GRAPH_DURATION);
+            displayTimeoutStartTime = millis(); // restart the display timeout
+            Serial.println("Displaying temperature graph");
+          } else if (displayState == 3) { // if the graph display is on, turn off the display and remove the timeout
+            displayState = 0;
+            displayTimeoutStartTime = 0;
+            display.clearDisplay();
+            display.display();
+            Serial.println("Turning off display with button press");
           }
-          displayTimeoutStartTime = millis(); // Start the display timeout
-          Serial.println("Displaying sensor values");
-        } else if (displayState == 1) { // if the data display is on, go to the graph display and reset the timeout
-          displayState = 2;
-          if (measurements.getSize() == 0) {
-            Serial.println("No measurements to display");
-            drawText("No measurements to display");
-          }
-          plotHumidityGraph(measurements.toArray(), measurements.getSize(), GRAPH_DURATION);
-          displayTimeoutStartTime = millis(); // restart the display timeout
-          Serial.println("Displaying humidity graph");
-        } else if (displayState == 2) { // if the graph display is on, switch to temperature graph display and reset the timeout
-          displayState = 3;
-          if (measurements.getSize() == 0) {
-            Serial.println("No measurements to display");
-            drawText("No measurements to display");
-          }
-          plotTemperatureGraph(measurements.toArray(), measurements.getSize(), GRAPH_DURATION);
-          displayTimeoutStartTime = millis(); // restart the display timeout
-          Serial.println("Displaying temperature graph");
-        } else if (displayState == 3) { // if the graph display is on, turn off the display and remove the timeout
-          displayState = 0;
-          displayTimeoutStartTime = 0;
-          display.clearDisplay();
-          display.display();
-          Serial.println("Turning off display with button press");
         }
       }
     }
-  }
 
-  if (displayTimeoutStartTime > 0 && displayState > 0 && (millis() - displayTimeoutStartTime >= DISPLAY_DURATION)) { // If display is active and display duration has passed, deactivate display
-    displayState = 0;
-    displayTimeoutStartTime = 0;
-    display.clearDisplay();
-    display.display();
-  }
+    if (displayTimeoutStartTime > 0 && displayState > 0 && (millis() - displayTimeoutStartTime >= DISPLAY_DURATION)) { // If display is active and display duration has passed, deactivate display
+      displayState = 0;
+      displayTimeoutStartTime = 0;
+      display.clearDisplay();
+      display.display();
+    }
 
-  // save the current state as the last state, for next time through the loop
-  prev_button_state = reading;
+    // save the current state as the last state, for next time through the loop
+    prev_button_state = reading;
+  } catch (const char *error) {
+    Serial.println(error);
+    drawText(error);
+  }
 }
