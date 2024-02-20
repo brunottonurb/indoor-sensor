@@ -64,6 +64,15 @@ void plotHumidityGraph(
   std::size_t measurementsSize,
   unsigned long graphLength
 ) {
+  // // generate some random data for testing
+  // int a = 50;
+  // measurementType measurements[100];
+  // for (int i = 0; i < 100; i++) {
+  //   measurements[i].timestamp = i;
+  //   measurements[i].humidity = a + random(-5, 5);
+  // }
+  // int measurementsSize = 100;
+
   display.clearDisplay();
   display.setTextSize(1);
   display.setTextColor(WHITE);
@@ -79,7 +88,7 @@ void plotHumidityGraph(
   // the graph goes for 4 hours (or graphLength)
   // left is 4 hours before the newest measurement
   const unsigned long endTime = measurements[measurementsSize -  1].timestamp;
-  const unsigned long startTime = measurements[measurementsSize -  1].timestamp - graphLength;
+  const unsigned long startTime = measurements[0].timestamp;
 
   // keep track of max and min values
   // so we can add a label to these points
@@ -92,10 +101,22 @@ void plotHumidityGraph(
   for (int i = 0; i < (int)measurementsSize; i++) {
     x = map(measurements[i].timestamp, startTime, endTime, 0, graphWidth);
     y = map(measurements[i].humidity, 0, 100, yOffset + graphHeight, yOffset);
-    Serial.print("x: ");
+  
+    Serial.print("i: ");
+    Serial.print(i);
+    Serial.print(" timestamp: ");
+    Serial.print(measurements[i].timestamp);
+    Serial.print(" startTime: ");
+    Serial.print(startTime);
+    Serial.print(" endTime: ");
+    Serial.print(endTime);
+    Serial.print(" graphWidth: ");
+    Serial.print(graphWidth);
+    Serial.print(" x: ");
     Serial.print(x);
     Serial.print(" y: ");
     Serial.println(y);
+
     display.drawPixel(x, y, WHITE);
 
     if (i > 0) {
@@ -112,8 +133,14 @@ void plotHumidityGraph(
   display.setCursor(map(maxHumidity.timestamp, startTime, endTime, 0, graphWidth), map(maxHumidity.humidity, 0, 100, yOffset + graphHeight, yOffset));
   display.print(maxHumidity.humidity);
   display.println("%");
-  if (minHumidity.humidity != maxHumidity.humidity) {
-    display.setCursor(map(minHumidity.timestamp, startTime, endTime, 0, graphWidth), map(minHumidity.humidity, 0, 100, yOffset + graphHeight, yOffset));
+
+  const int minX = map(minHumidity.timestamp, startTime, endTime, 0, graphWidth);
+  const int maxX = map(maxHumidity.timestamp, startTime, endTime, 0, graphWidth);
+  const int minY = map(minHumidity.humidity, 0, 100, yOffset + graphHeight, yOffset);
+  const int maxY = map(maxHumidity.humidity, 0, 100, yOffset + graphHeight, yOffset);
+
+  if (minX != maxX && minY != maxY) { // do not print min if it's the same as max
+    display.setCursor(minX, minY);
     display.print(minHumidity.humidity);
     display.println("%");
   }
@@ -143,7 +170,7 @@ void plotTemperatureGraph(
   // the graph goes for 4 hours (or graphLength)
   // left is 4 hours before the newest measurement
   const unsigned long endTime = measurements[measurementsSize -  1].timestamp;
-  const unsigned long startTime = measurements[measurementsSize -  1].timestamp - graphLength;
+  const unsigned long startTime = measurements[0].timestamp;
 
   // keep track of max and min values
   // so we can add a label to these points
@@ -174,8 +201,14 @@ void plotTemperatureGraph(
   display.print(maxTemperature.temperature);
   display.print(ds);
   display.println("C");
-  if (minTemperature.temperature != maxTemperature.temperature) {
-    display.setCursor(map(minTemperature.timestamp, startTime, endTime, 0, graphWidth), map(minTemperature.temperature, -20, 40, yOffset + graphHeight, yOffset));
+  
+  const int minX = map(minTemperature.timestamp, startTime, endTime, 0, graphWidth);
+  const int maxX = map(maxTemperature.timestamp, startTime, endTime, 0, graphWidth);
+  const int minY = map(minTemperature.temperature, -20, 40, yOffset + graphHeight, yOffset);
+  const int maxY = map(maxTemperature.temperature, -20, 40, yOffset + graphHeight, yOffset);
+
+  if (minX != maxX && minY != maxY) { // do not print min if it's the same as max
+    display.setCursor(minX, minY);
     display.print(minTemperature.temperature);
     display.print(ds);
     display.println("C");
